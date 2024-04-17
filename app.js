@@ -24,7 +24,7 @@ app.post('/tokens', async (req, res) => {
     const { id } = req.body;
 
     // Access Token과 Refresh Token을 발급
-    const accessToken = jwt.sign({ id: id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '10s' });
+    const accessToken = createAccessToken(id); // jwt.sign({ id: id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '10s' });
     const refreshToken = jwt.sign({ id: id }, REFRESH_TOKEN_SECRET_KEY, { expiresIn: '7d' });
 
     tokenStorages[refreshToken] = {
@@ -53,6 +53,7 @@ app.get('/tokens/validate', async (req, res) => {
     }
 
     const payload = validateToken(accessToken, ACCESS_TOKEN_SECRET_KEY);
+
     if (!payload) {
         return res.status(401).json({ errorMessage: 'Access Token이 유효하지 않습니다.' });
     }
@@ -70,6 +71,36 @@ function validateToken(token, secretKey) {
         return null;
     }
 }
+
+function createAccessToken(id) {
+    return jwt.sign({ id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '10s' });
+}
+
+/** Refresh Token을 이용해서, Access Token을 재발급하는 API  */
+app.post('/tokens/refresh', async (req, res) => {
+    const { refreshToken } = req.cookies;
+
+    if (!refreshToken) {
+        return res.status(400).json({ errorMessage: 'Refresh Token이 존재하지 않습니다.' });
+    }
+
+    const payload = validateToken(refreshToken, REFRESH_TOKEN_SECRET_KEY);
+
+    if (!payload) {
+        return res.status(401).json({ errorMessage: 'Refresh Token이 정상적이지 않습니다.' });
+    }
+
+    const userInfo = tokenStorages[refreshToken];
+
+    if (!userInfo) {
+        return res.status(419).json({ errorMessage: 'Refresh Token의 정보가 서버에 존재하지 않습니다.' });
+    }
+
+    const newAccessToken = createAccessToken(userInfo.id); // 이전 code: const newAccessToken = jwt.sign(userInfo.id, ACCESS_TOKEN_SECRET_KEY);
+
+    res.cookie('accessToken', newAccessToken);
+    return res.status(200).json({ message: 'Access Token을 정상적으로 새롭게 발급했습니다.' });
+});
 
 app.listen(SERVER_PORT, () => {
     console.log(SERVER_PORT, '포트로 서버가 열렸습니다.');
