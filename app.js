@@ -43,6 +43,34 @@ app.post('/tokens', async (req, res) => {
     return res.status(200).json({ message: 'Token이 정상적으로 발급되었습니다.' });
 });
 
+/** Access Token을 Validate하는 API **/
+app.get('/tokens/validate', async (req, res) => {
+    const { accessToken } = req.cookies;
+
+    // Access Token이 존재하는지 확인
+    if (!accessToken) {
+        return res.status(400).json({ errorMessage: 'Access Token이 존재하지 않습니다.' });
+    }
+
+    const payload = validateToken(accessToken, ACCESS_TOKEN_SECRET_KEY);
+    if (!payload) {
+        return res.status(401).json({ errorMessage: 'Access Token이 유효하지 않습니다.' });
+    }
+
+    const { id } = payload;
+    return res.status(200).json({ message: `${id}의 Payload를 가진 Token이 정상적으로 인증되었습니다.` });
+});
+
+// Token을 validate하고, Payload를 조회하기 위한 함수
+function validateToken(token, secretKey) {
+    // 성공하면 payload, 실패하면 null 반환
+    try {
+        return jwt.verify(token, secretKey);
+    } catch (err) {
+        return null;
+    }
+}
+
 app.listen(SERVER_PORT, () => {
     console.log(SERVER_PORT, '포트로 서버가 열렸습니다.');
 });
