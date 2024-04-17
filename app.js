@@ -5,9 +5,9 @@ import cookieParser from 'cookie-parser';
 const app = express();
 const SERVER_PORT = 3019;
 
-// .env를 활용한 비밀키 관리
-const ACCESS_TOKEN_SECRET_KEY = 'Mario'; // Access Token의 비밀 키를 정의
-const REFRESH_TOKEN_SECRET_KEY = 'Luigi'; // Refresh Token의 비밀 키를 정의
+// Secret Key는 아래처럼 평문으로 작성X, 외부에 노출되면 안되기 때문에 .env로 관리
+const ACCESS_TOKEN_SECRET_KEY = 'Mario'; // Access Token Secret Key 정의
+const REFRESH_TOKEN_SECRET_KEY = 'Luigi'; // Refresh Token Secret Key 정의
 
 app.use(express.json());
 app.use(cookieParser());
@@ -16,102 +16,31 @@ app.get('/', (req, res) => {
     return res.status(200).send('Hello Token!');
 });
 
-// Refresh Token을 저장하고 관리하는 객체 생성
-const tokenStorages = {};
+const tokenStorages = {}; // Refresh Token을 관리할 객체
 
-/**
- * Access, Refresh Token 발급 API
- */
+/** Access Token, Refresh Token 발급 API **/
 app.post('/tokens', async (req, res) => {
-    // ID 전달
+    // id 전달
     const { id } = req.body;
 
-    // Access Token, Refresh Token 발급
-    // jwt.sign을 통해 jwt 발급 -> 첫번 째 인자 아이디 정보, 두번 째 인자 어떤 비밀키를 이용하여 jwt를 만들 것인지
-    const accessToken = createAccessToken(id); //jwt.sign({ id: id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '18s' });
+    // Access Token과 Refresh Token을 발급
+    const accessToken = jwt.sign({ id: id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '10s' });
     const refreshToken = jwt.sign({ id: id }, REFRESH_TOKEN_SECRET_KEY, { expiresIn: '7d' });
 
-    // 발급 받은 Refresh Token은 서버에서 관리-> tokenStorages 안에 들어있는 refreshToken 키에 여러가지 정보 저장
     tokenStorages[refreshToken] = {
         id: id,
-        ip: req.ip, // 해당 사용자가 어떤 ip로 요청했는지 확인
-        userAgent: req.headers['user-agent'], // 특정 클라이언트의 서버 요청 내용(파이어폭스 ,크롬, 모바일 등등)
+        ip: req.ip,
+        userAgent: req.headers['user-agent'], // 어떤 방식으로 요청했는지 ex) Firefox, Chrome, Mobile 등등
     };
 
-    // token 발급 후 tokenStorages에 있는 정보 확인
+    // Token 발급 후, Token Storages에 어떻게 저장되는지 확인
     console.log(tokenStorages);
 
-    // 클라이언트에게 쿠키(토큰)을 할당
+    // Client에게 Cookie(Token)을 할당
     res.cookie('accessToken', accessToken);
     res.cookie('refreshToken', refreshToken);
 
     return res.status(200).json({ message: 'Token이 정상적으로 발급되었습니다.' });
-});
-
-/**
- * Access Token 검증 API
- */
-app.get('/tokens/validate', async (req, res) => {
-    const { accessToken } = req.cookies;
-
-    // Access Token이 존재하는지 확인
-    if (!accessToken) {
-        return res.status(400).json({ errorMessage: 'Access Token이 존재하지 않습니다.' });
-    }
-
-    // Access Token이 존재한다면 안에 있는 payload 확인
-    // { accessToken }, Access Token 검증
-    const payload = validateToken(accessToken, ACCESS_TOKEN_SECRET_KEY);
-
-    if (!payload) {
-        return res.status(401).json({ errorMessage: 'Access Token이 정상적이지 않습니다.' });
-    }
-
-    const { id } = payload;
-    return res.status(200).json({ message: `${id}의 Payload를 가진 Token이 정상적으로 인증 되었습니다.` });
-});
-
-// Token을 검증하고, Payload를 조회하기 위한 함수
-function validateToken(token, secretKey) {
-    try {
-        return jwt.verify(token, secretKey); // 인증이 성공하면 payload 반환, 인증에 실패하면 error 반환
-    } catch (err) {
-        return null;
-    }
-}
-
-// Access Token 발급하는 부분을 createAccessToken() 함수로 치환
-function createAccessToken(id) {
-    return jwt.sign({ id }, ACCESS_TOKEN_SECRET_KEY, { expiresIn: '10s' });
-}
-
-/**
- * Refresh Token을 이용해서, AccessToken을 재발급하는 API
- */
-app.post('/tokens/refresh', async (req, res) => {
-    const { refreshToken } = req.cookies;
-
-    if (refreshToken) {
-        return res.status(400).json({ errorMessage: 'Refresh Token이 존재하지 않습니다.' });
-    }
-
-    const payload = validateToken(refreshToken, REFRESH_TOKEN_SECRET_KEY);
-
-    if (!payload) {
-        return res.status(401).json({ errorMessage: 'Refresh Token이 정상적이지 않습니다.' });
-    }
-
-    // tokenStorages 저장했던 것을 Refresh Token에서 실제로 해당하는 정보를 가지고 옴
-    const userInfo = tokenStorages[refreshToken];
-
-    if (!userInfo) {
-        return res.status(419).json({ errorMessage: 'Refresh Token의 정보가 서버에 존재하지 않습니다.' });
-    }
-
-    const newAccessToken = createAccessToken(userInfo.id); //jwt.sign(userInfo.id, ACCESS_TOKEN_SECRET_KEY);
-
-    res.cookie('accessToken', newAccessToken);
-    return res.status(200).json({ message: 'Access Token을 정상적으로 새롭게 발급했습니다.' });
 });
 
 app.listen(SERVER_PORT, () => {
